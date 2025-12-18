@@ -57,10 +57,10 @@ function initVisualizer() {
         source = audioCtx.createMediaElementSource(audio);
         source.connect(analyser);
         analyser.connect(audioCtx.destination);
-        analyser.fftSize = 256; // Higher resolution for bass tracking
+        analyser.fftSize = 128;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
         renderFrame();
-    } catch(e) { console.warn("Audio blocked."); }
+    } catch(e) { console.warn("Visualizer failed."); }
 }
 
 function renderFrame() {
@@ -68,28 +68,22 @@ function renderFrame() {
     if (!analyser) return;
     analyser.getByteFrequencyData(dataArray);
     
-    // Focus on Low Frequencies (Bass) - usually first few bins
-    let bassSum = 0;
-    const bassBins = 10; 
-    for(let i = 0; i < bassBins; i++) {
-        bassSum += dataArray[i];
-    }
-    let bassAvg = bassSum / bassBins;
+    // Target Bass
+    let bass = dataArray[1]; 
     
-    // Smooth Sway Logic
-    let time = Date.now() * 0.002;
-    // Base sway + Bass boost
-    let swayRange = 3 + (bassAvg / 15); 
-    let rotation = Math.sin(time) * swayRange;
+    // Calculate Sway Position (targeting ~15px range)
+    let time = Date.now() * 0.003;
+    let shiftX = Math.sin(time) * (5 + (bass / 12)); 
     
-    // Scale pulse on bass hits
-    let scale = 1.15 + (bassAvg / 500); 
-    let bright = 1 + (bassAvg / 400);
+    // Subtle rotation (only 1-2 degrees max)
+    let rotation = Math.sin(time) * (bass / 150);
+    
+    // Subtle Pulse
+    let scale = 1.05 + (bass / 800);
 
-    // ONLY transform the visualLayer, not the whole body
     if(visualLayer) {
-        visualLayer.style.transform = `scale(${scale}) rotate(${rotation}deg)`;
-        visualLayer.style.filter = `brightness(${bright})`;
+        // This shifts the background 15px side to side based on the beat
+        visualLayer.style.transform = `scale(${scale}) translateX(${shiftX}px) rotate(${rotation}deg)`;
     }
 }
 
@@ -97,7 +91,7 @@ function playTrack(i) {
     if (i >= playlist.length) i = 0;
     currentIdx = i;
     audio.src = encodeURI("songs/" + playlist[currentIdx]);
-    audio.play().catch(() => setTimeout(() => playTrack(currentIdx + 1), 1000));
+    audio.play().catch(() => {});
 }
 
 audio.onended = () => playTrack(currentIdx + 1);
