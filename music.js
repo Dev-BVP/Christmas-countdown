@@ -58,7 +58,6 @@ let audioCtx, analyser, gainNode, source;
 let started = false;
 let currentIdx = 0;
 const visualLayer = document.getElementById("visual-layer");
-const songLabel = document.getElementById("current-song");
 
 // Start button
 const btn = document.createElement("button");
@@ -113,43 +112,62 @@ function fadeVolume(target,duration){
 }
 
 // ===============================
-// LIVE SYNC
+// LIVE SYNC OPTIMIZED
 // ===============================
-function preloadDurations() {
-    return Promise.all(playlist.map(filename => {
+let trackDurations = [];
+let cumulativeDurations = []; // precompute cumulative durations for fast lookup
+
+async function preloadDurations() {
+    const promises = playlist.map(filename=>{
         return new Promise(res=>{
             const a = new Audio();
             a.src = "songs/"+filename;
             a.addEventListener("loadedmetadata",()=>res(a.duration));
-            a.addEventListener("error",()=>res(180)); // fallback
+            a.addEventListener("error",()=>res(180));
         });
-    }));
-}
+    });
+    trackDurations = await Promise.all(promises);
 
-let trackDurations = [];
-function getLiveTrackAndOffset(){
-    const now = Date.now();
-    let elapsed = (now-GLOBAL_START_TIME)/1000;
-    let idx = 0;
-    while(true){
-        const dur = trackDurations[idx]||180;
-        if(elapsed < dur) return {trackIndex: idx, offset: elapsed};
-        elapsed -= dur;
-        idx = (idx+1)%playlist.length;
+    // compute cumulative durations
+    cumulativeDurations = [0];
+    for(let i=0;i<trackDurations.length;i++){
+        cumulativeDurations.push(cumulativeDurations[i]+trackDurations[i]);
     }
 }
 
-function updateSongLabel(){
-    const filename = playlist[currentIdx];
-    const cleanName = filename.replace("Music Now, Trap Music Now, Dance Music Now - ","")
-                              .replace("(SPOTISAVER).mp3","")
-                              .trim();
-    if(songLabel) songLabel.textContent = cleanName;
+function getLiveTrackAndOffset(){
+    const now = Date.now();
+    const elapsed = (now-GLOBAL_START_TIME)/1000; // seconds
+    const totalDuration = cumulativeDurations[cumulativeDurations.length-1];
+    const modTime = elapsed % totalDuration;
+
+    // Binary search for track index
+    let left=0, right=cumulativeDurations.length-1;
+    while(left<right-1){
+        const mid = Math.floor((left+right)/2);
+        if(cumulativeDurations[mid]<=modTime) left=mid;
+        else right=mid;
+    }
+    const trackIndex = left;
+    const offset = modTime - cumulativeDurations[trackIndex];
+    return {trackIndex, offset};
 }
 
 // ===============================
 // PLAYBACK
 // ===============================
+function updateMediaSessionTitle(filename){
+    const cleanName = filename.replace("Music Now, Trap Music Now, Dance Music Now - ","")
+                              .replace("(SPOTISAVER).mp3","")
+                              .trim();
+    if('mediaSession' in navigator){
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: cleanName,
+            artist: "Christmas Countdown"
+        });
+    }
+}
+
 function playLiveTrack(){
     const {trackIndex, offset} = getLiveTrackAndOffset();
     currentIdx = trackIndex;
@@ -158,7 +176,7 @@ function playLiveTrack(){
         audio.currentTime = offset;
         audio.play();
         fadeVolume(1,FADE_TIME);
-        updateSongLabel();
+        updateMediaSessionTitle(playlist[currentIdx]);
     };
     audio.onended = playLiveTrack;
 }
@@ -167,7 +185,7 @@ audio.addEventListener("play",()=>{
     if(!started || !audio.duration) return;
     const {offset} = getLiveTrackAndOffset();
     audio.currentTime = offset;
-    updateSongLabel();
+    updateMediaSessionTitle(playlist[currentIdx]);
 });
 
 // Disable skip/prev
@@ -183,7 +201,7 @@ btn.onclick = async ()=>{
     if(started) return;
     started=true;
     initVisualizer();
-    trackDurations = await preloadDurations();
+    await preloadDurations();
     playLiveTrack();
     btn.remove();
 };
