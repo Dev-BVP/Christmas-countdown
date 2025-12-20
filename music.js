@@ -1,7 +1,7 @@
 document.title = "Christmas Countdown (Radio)";
 const audio = new Audio();
 
-// Playlist
+// Main songs
 const songs = [
     "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
     "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
@@ -17,31 +17,34 @@ const songs = [
     "Winter Wonderland","Wonderful Christmastime","You're A Mean One Mr.Grinch!"
 ];
 
+// Playlist with speech
 const playlist = [];
-for (let song of songs){
+songs.forEach(song => {
     playlist.push({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`});
     playlist.push({name: "Speech", src: "songs/speech.mp3"});
-}
+});
 
-// Song durations placeholder
-const songDurations = playlist.map(()=>180);
+// Durations only for main songs (skip speech)
+const songDurations = songs.map(() => 180);
 
 // Start time
 const serverStartTime = new Date("Dec 1, 2025 00:00:00 UTC").getTime();
 
+// Current song index
 function getCurrentSongIndexAndOffset(){
     const now = Date.now();
     const elapsed = (now-serverStartTime)/1000;
     const totalDuration = songDurations.reduce((a,b)=>a+b,0);
     let time = elapsed % totalDuration;
     for(let i=0;i<playlist.length;i++){
-        if(time<songDurations[i]) return {index:i, offset:time};
-        time -= songDurations[i];
+        if(playlist[i].name !== "Speech" && time < songDurations[Math.floor(i/2)]) 
+            return {index:i, offset:time};
+        if(playlist[i].name !== "Speech") time -= songDurations[Math.floor(i/2)];
     }
     return {index:0, offset:0};
 }
 
-// AudioContext for visual effects
+// AudioContext for snowflake effects
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray;
 
@@ -67,64 +70,88 @@ function animateEffects(){
 // Play synced music
 function playSync(){
     const {index, offset} = getCurrentSongIndexAndOffset();
-    audio.src = playlist[index].src;
+    const track = playlist[index];
+    audio.src = track.src;
     audio.currentTime = offset;
     audio.play().catch(()=>{});
 
     if('mediaSession' in navigator){
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: playlist[index].name,
+            title: track.name,
             artist: 'Christmas Countdown',
             album: 'Live Radio',
             artwork: [{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
         });
     }
 
-    setTimeout(playSync, songDurations[index]-offset*1000);
+    // Duration only for music tracks
+    let duration = track.name === "Speech" ? audio.duration || 5 : songDurations[Math.floor(index/2)];
+    setTimeout(playSync, duration*1000);
 }
 
-// Start music + PiP for full page
+// Start music + canvas PiP
 async function startMusic(){
     if(audioCtx.state==='suspended') await audioCtx.resume();
     setupAudioContext();
     animateEffects();
     playSync();
 
-    // Create iframe for PiP
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '800px';
-    iframe.style.height = '600px';
-    iframe.style.left = '-10000px';
-    document.body.appendChild(iframe);
+    // Canvas for PiP
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const width=800, height=600;
+    canvas.width = width; canvas.height = height;
+    canvas.style.display='none';
+    document.body.appendChild(canvas);
 
-    // Copy current body into iframe
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(`<body style="margin:0; padding:0; background:transparent;">${document.body.innerHTML}</body>`);
-    iframe.contentDocument.close();
+    const video = document.createElement('video');
+    video.srcObject = canvas.captureStream(30);
+    video.muted = true;
+    await video.play();
 
-    try {
-        const stream = iframe.contentDocument.body.captureStream(30);
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        await video.play();
+    function renderCanvas(){
+        ctx.clearRect(0,0,width,height);
 
-        document.addEventListener('keydown', async (event)=>{
-            if(event.ctrlKey && event.shiftKey && event.key.toLowerCase()==='p'){
-                event.preventDefault();
-                try{
-                    if(!document.pictureInPictureElement){
-                        await video.requestPictureInPicture();
-                    }else{
-                        await document.exitPictureInPicture();
-                    }
-                }catch(err){
-                    console.error('PiP failed:', err);
-                }
-            }
+        // Background
+        const bg = new Image();
+        bg.src = 'christmas-background.jpg';
+        ctx.drawImage(bg,0,0,width,height);
+
+        // Title + Countdown
+        ctx.font = '80px ChristmasFont, cursive';
+        ctx.fillStyle = 'white'; ctx.textAlign = 'center';
+        ctx.shadowColor = 'red'; ctx.shadowBlur = 20;
+        ctx.fillText('Christmas', width/2,150);
+        ctx.fillText('Countdown', width/2,250);
+
+        ctx.font = '80px ChristmasFont, cursive';
+        ctx.shadowColor='green'; ctx.shadowBlur=15;
+        ctx.fillText(countdownEl.textContent, width/2,350);
+
+        // Snowflakes
+        document.querySelectorAll('.snowflake').forEach((flake)=>{
+            const x = parseFloat(flake.style.left)||Math.random()*width;
+            const y = parseFloat(flake.style.top)||Math.random()*height;
+            ctx.font = flake.style.fontSize||'20px';
+            ctx.fillStyle='white';
+            ctx.fillText('❄', x, y);
         });
-    } catch(err){
-        console.error('PiP setup failed:', err);
+
+        requestAnimationFrame(renderCanvas);
     }
+    renderCanvas();
+
+    // Ctrl+Shift+P toggle PiP
+    document.addEventListener('keydown', async (event)=>{
+        if(event.ctrlKey && event.shiftKey && event.key.toLowerCase()==='p'){
+            event.preventDefault();
+            try{
+                if(!document.pictureInPictureElement){
+                    await video.requestPictureInPicture();
+                }else{
+                    await document.exitPictureInPicture();
+                }
+            }catch(err){ console.error('PiP failed:',err); }
+        }
+    });
 }
