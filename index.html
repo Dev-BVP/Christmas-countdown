@@ -146,14 +146,15 @@ for(let i=0;i<50;i++){
     document.body.appendChild(snow);
 }
 
-// Setup analyser
+// Setup analyser and gains
+let songGain, speechGain;
 function setupAudio(){
     const songSource = audioCtx.createMediaElementSource(audio);
     const speechSource = audioCtx.createMediaElementSource(speechAudio);
 
     analyser = audioCtx.createAnalyser();
-    const songGain = audioCtx.createGain();
-    const speechGain = audioCtx.createGain();
+    songGain = audioCtx.createGain();
+    speechGain = audioCtx.createGain();
     songGain.gain.value = 1;
     speechGain.gain.value = 0;
 
@@ -162,8 +163,6 @@ function setupAudio(){
     speechSource.connect(speechGain).connect(audioCtx.destination);
 
     dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    return {songGain, speechGain};
 }
 
 // Animate container and text
@@ -190,7 +189,6 @@ function animateEffects(){
 }
 
 let currentIndex = 0;
-let songGain, speechGain;
 
 // Preload durations
 async function preloadDurations(){
@@ -230,7 +228,7 @@ function calculateLiveIndexAndTime(){
     return {index:0, time:0};
 }
 
-// Play next track
+// Play next track with crossfade speech
 function playNextTrack(){
     if(currentIndex >= playlist.length) currentIndex = 0;
     const track = playlist[currentIndex];
@@ -244,7 +242,7 @@ function playNextTrack(){
         if(track.name !== "Speech"){
             audio.addEventListener('timeupdate', function crossfade(){
                 const remaining = audio.duration - audio.currentTime;
-                if(remaining <= 5){ // last 5 seconds
+                if(remaining <= 5){
                     speechGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 5);
                     songGain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 5);
                     speechAudio.currentTime = 0;
@@ -270,6 +268,7 @@ function playNextTrack(){
         playNextTrack();
     });
 
+    // MediaSession with skip disabled
     if('mediaSession' in navigator){
         navigator.mediaSession.metadata = new MediaMetadata({
             title: track.name,
@@ -277,6 +276,11 @@ function playNextTrack(){
             album:'Live Radio',
             artwork:[{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
         });
+
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
     }
 }
 
@@ -294,9 +298,7 @@ async function jumpToLive(){
 // Start music button
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state==='suspended') await audioCtx.resume();
-    const gains = setupAudio();
-    songGain = gains.songGain;
-    speechGain = gains.speechGain;
+    setupAudio();
     animateEffects();
     jumpToLive();
     document.getElementById('playButton').style.display='none';
