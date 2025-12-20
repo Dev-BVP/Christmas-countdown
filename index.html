@@ -76,30 +76,56 @@
 <div id="countdown">00d 00h 00m 00s</div>
 <button id="playButton">Play Music</button>
 
-<script src="music.js"></script>
 <script>
+document.title = "Christmas Countdown (Radio)";
 const countdownEl = document.getElementById('countdown');
+const audio = new Audio();
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let analyser, dataArray;
 
-// Countdown function
-function updateCountdown() {
+// Playlist
+const songs = [
+    "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
+    "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
+    "Dance Of The Sugar Plum Fairy","Deck The Halls","Do You Want To Build A Snowman",
+    "Feliz Navidad","Frosty The Snowman","God Rest Ye Merry Gentlemen","Hallelujah",
+    "Here Comes Santa Claus","Holly Jolly Christmas","I Want A Hippopotamus For Christmas",
+    "It's Beginning To Look A Lot Like Christmas","It's The Most Wonderful Time Of The Year",
+    "Jingle Bell Rock","Jingle Bells","Last Christmas","Let It Snow! Let It Snow!",
+    "Little Drummer Boy","Mistletoe","O Christmas Tree","Rockin Around The Christmas Tree",
+    "Rudolph The Red-Nosed Reindeer","Santa Baby","Santa Claus Is Comin' To Town",
+    "Silent Night","Sleigh Ride","The Christmas Song","The Nutcracker March",
+    "Up On The Housetop","We Wish You A Merry Christmas","White Christmas",
+    "Winter Wonderland","Wonderful Christmastime","You're A Mean One Mr.Grinch!"
+];
+
+// Playlist with speech after each song
+const playlist = [];
+songs.forEach(song => {
+    playlist.push({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`});
+    playlist.push({name:"Speech", src:"songs/speech.mp3"});
+});
+const songDurations = songs.map(()=>180);
+const serverStartTime = new Date("Dec 1, 2025 00:00:00 UTC").getTime();
+
+// Countdown
+function updateCountdown(){
     const now = new Date();
     let year = now.getFullYear();
     let target = new Date(`Dec 25, ${year} 00:00:00`).getTime();
-    if (now.getTime() > target) target = new Date(`Dec 25, ${year+1} 00:00:00`).getTime();
+    if(now.getTime() > target) target = new Date(`Dec 25, ${year+1} 00:00:00`).getTime();
     const distance = target - now.getTime();
-    const days = Math.floor(distance / (1000*60*60*24));
-    const hours = Math.floor((distance % (1000*60*60*24)) / (1000*60*60));
-    const minutes = Math.floor((distance % (1000*60*60)) / (1000*60));
-    const seconds = Math.floor((distance % (1000*60)) / 1000);
+    const days = Math.floor(distance/(1000*60*60*24));
+    const hours = Math.floor((distance % (1000*60*60*24))/(1000*60*60));
+    const minutes = Math.floor((distance % (1000*60*60))/(1000*60));
+    const seconds = Math.floor((distance % (1000*60))/1000);
     countdownEl.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
-
-setInterval(updateCountdown, 1000);
+setInterval(updateCountdown,1000);
 updateCountdown();
 
 // Snowflakes
-const numSnowflakes = 50;
-for (let i=0; i<numSnowflakes; i++){
+for(let i=0;i<50;i++){
     const snow = document.createElement('div');
     snow.className='snowflake';
     snow.textContent='❄';
@@ -109,9 +135,117 @@ for (let i=0; i<numSnowflakes; i++){
     document.body.appendChild(snow);
 }
 
+// Audio visualizer
+function setupAudio(){
+    const track = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+    track.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function animateEffects(){
+    requestAnimationFrame(animateEffects);
+    if(!analyser) return;
+    analyser.getByteFrequencyData(dataArray);
+    const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
+    document.querySelectorAll('.snowflake').forEach((flake,i)=>{
+        flake.style.transform=`translateY(${Math.sin(Date.now()/1000+i)*5 + avg/15}px)`;
+        flake.style.opacity=0.5+avg/512;
+    });
+}
+
+// Current song index
+function getCurrentSongIndexAndOffset(){
+    const now = Date.now();
+    const elapsed = (now-serverStartTime)/1000;
+    const total = songDurations.reduce((a,b)=>a+b,0);
+    let time = elapsed % total;
+    for(let i=0;i<playlist.length;i++){
+        if(playlist[i].name!=="Speech" && time < songDurations[Math.floor(i/2)])
+            return {index:i, offset:time};
+        if(playlist[i].name!=="Speech") time -= songDurations[Math.floor(i/2)];
+    }
+    return {index:0, offset:0};
+}
+
+function playSync(){
+    const {index, offset} = getCurrentSongIndexAndOffset();
+    const track = playlist[index];
+    audio.src = track.src;
+    audio.currentTime = offset;
+    audio.play().catch(()=>{});
+    if('mediaSession' in navigator){
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.name,
+            artist:'Christmas Countdown',
+            album:'Live Radio',
+            artwork:[{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
+        });
+    }
+    let duration = track.name==="Speech"? audio.duration || 5 : songDurations[Math.floor(index/2)];
+    setTimeout(playSync,duration*1000);
+}
+
+// Start music + PiP
+async function startMusic(){
+    if(audioCtx.state==='suspended') await audioCtx.resume();
+    setupAudio();
+    animateEffects();
+    playSync();
+
+    // Canvas for PiP
+    const canvas = document.createElement('canvas');
+    canvas.width=800; canvas.height=600;
+    canvas.style.display='none';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const video = document.createElement('video');
+    video.srcObject = canvas.captureStream(30);
+    video.muted = true;
+    await video.play();
+
+    function renderCanvas(){
+        ctx.clearRect(0,0,800,600);
+        const bg=new Image();
+        bg.src='christmas-background.jpg';
+        ctx.drawImage(bg,0,0,800,600);
+        ctx.font='80px ChristmasFont, cursive';
+        ctx.fillStyle='white'; ctx.textAlign='center';
+        ctx.shadowColor='red'; ctx.shadowBlur=20;
+        ctx.fillText('Christmas',400,150);
+        ctx.fillText('Countdown',400,250);
+        ctx.font='80px ChristmasFont, cursive';
+        ctx.shadowColor='green'; ctx.shadowBlur=15;
+        ctx.fillText(countdownEl.textContent,400,350);
+        document.querySelectorAll('.snowflake').forEach((flake)=>{
+            const x=parseFloat(flake.style.left)||Math.random()*800;
+            const y=parseFloat(flake.style.top)||Math.random()*600;
+            ctx.font=flake.style.fontSize||'20px';
+            ctx.fillStyle='white';
+            ctx.fillText('❄',x,y);
+        });
+        requestAnimationFrame(renderCanvas);
+    }
+    renderCanvas();
+
+    // Alt+P PiP toggle
+    document.addEventListener('keydown', async (event)=>{
+        if(event.altKey && event.key.toLowerCase()==='p'){
+            event.preventDefault();
+            try{
+                if(!document.pictureInPictureElement){
+                    await video.requestPictureInPicture();
+                }else{
+                    await document.exitPictureInPicture();
+                }
+            }catch(err){ console.error('PiP failed:',err); }
+        }
+    });
+}
+
 // Play button
-document.getElementById('playButton').addEventListener('click', async () => {
-    if(audioCtx.state === 'suspended') await audioCtx.resume();
+document.getElementById('playButton').addEventListener('click',()=>{
     startMusic();
     document.getElementById('playButton').style.display='none';
 });
