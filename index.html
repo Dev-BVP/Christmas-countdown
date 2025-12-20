@@ -13,7 +13,6 @@
         text-align: center;
         overflow: hidden;
         position: relative;
-        /* Your original background */
         background: url('christmas-background.jpg') no-repeat center center fixed;
         background-size: cover;
     }
@@ -64,47 +63,48 @@
 
 <script src="music.js"></script>
 <script>
-    const countdownEl = document.getElementById('countdown');
-    const targetDate = new Date("Dec 25, 2025 00:00:00").getTime();
+const countdownEl = document.getElementById('countdown');
 
-    function updateCountdown() {
-        const now = new Date().getTime();
-        const distance = targetDate - now;
+// Countdown function that resets each year
+function updateCountdown() {
+    const now = new Date();
+    let currentYear = now.getFullYear();
 
-        if (distance < 0) {
-            countdownEl.textContent = "🎄 Merry Christmas! 🎄";
-            clearInterval(interval);
-            return;
-        }
-
-        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-        countdownEl.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    // Target date: Dec 25 of current year, or next year if already passed
+    let targetDate = new Date(`Dec 25, ${currentYear} 00:00:00`).getTime();
+    if (now.getTime() > targetDate) {
+        targetDate = new Date(`Dec 25, ${currentYear + 1} 00:00:00`).getTime();
     }
 
-    const interval = setInterval(updateCountdown, 1000);
-    updateCountdown();
+    const distance = targetDate - now.getTime();
+    const days = Math.floor(distance / (1000*60*60*24));
+    const hours = Math.floor((distance % (1000*60*60*24)) / (1000*60*60));
+    const minutes = Math.floor((distance % (1000*60*60)) / (1000*60));
+    const seconds = Math.floor((distance % (1000*60)) / 1000);
 
-    // Snowflakes
-    const numSnowflakes = 50;
-    for (let i = 0; i < numSnowflakes; i++) {
-        const snow = document.createElement('div');
-        snow.className = 'snowflake';
-        snow.textContent = '❄';
-        snow.style.left = Math.random() * 100 + 'vw';
-        snow.style.animationDuration = (3 + Math.random() * 5) + 's';
-        snow.style.fontSize = (10 + Math.random() * 20) + 'px';
-        document.body.appendChild(snow);
-    }
+    countdownEl.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+}
 
-    // === Play button event ===
-    document.getElementById('playButton').addEventListener('click', () => {
-        startMusic();   // Function defined in music.js
-        document.getElementById('playButton').style.display = 'none'; // hide button
-    });
+setInterval(updateCountdown, 1000);
+updateCountdown();
+
+// Snowflakes
+const numSnowflakes = 50;
+for (let i=0; i<numSnowflakes; i++){
+    const snow = document.createElement('div');
+    snow.className='snowflake';
+    snow.textContent='❄';
+    snow.style.left=Math.random()*100+'vw';
+    snow.style.animationDuration=(3+Math.random()*5)+'s';
+    snow.style.fontSize=(10+Math.random()*20)+'px';
+    document.body.appendChild(snow);
+}
+
+// Play button
+document.getElementById('playButton').addEventListener('click', () => {
+    startMusic();
+    document.getElementById('playButton').style.display='none';
+});
 </script>
 </body>
 </html>
