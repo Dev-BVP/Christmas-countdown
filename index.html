@@ -6,86 +6,89 @@
 <title>Christmas Countdown (Radio)</title>
 <link rel="icon" href="favicon.ico" type="image/x-icon">
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        font-family: 'Arial', sans-serif;
-        text-align: center;
-        overflow: hidden;
-        position: relative;
-        background: url('christmas-background.jpg') no-repeat center center fixed;
-        background-size: cover;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        transition: transform 0.05s ease;
-    }
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Arial', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    background: url('christmas-background.jpg') no-repeat center center fixed;
+    background-size: cover;
+}
 
-    #title, #subtitle {
-        font-size: 6em;
-        color: #fff;
-        text-shadow: 0 0 15px red, 0 0 25px green;
-        margin: 0;
-        font-family: 'ChristmasFont', cursive;
-        display: inline-block;
-        transition: transform 0.05s ease;
-    }
+#container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    transition: transform 0.05s ease;
+}
 
-    #countdown {
-        font-size: 6em;
-        color: #fff;
-        text-shadow: 0 0 10px red, 0 0 20px green;
-        margin-top: 20px;
-        font-family: 'ChristmasFont', cursive;
-        display: inline-block;
-        transition: transform 0.05s ease;
-    }
+#title, #subtitle {
+    font-size: 6em;
+    color: #fff;
+    text-shadow: 0 0 15px red, 0 0 25px green;
+    margin: 0;
+    display: inline-block;
+    transition: transform 0.05s ease;
+}
 
-    #playButton {
-        margin-top: 50px;
-        font-size: 2em;
-        padding: 15px 30px;
-        background-color: red;
-        color: white;
-        border: none;
-        border-radius: 15px;
-        cursor: pointer;
-        text-shadow: 1px 1px 2px #000;
-        transition: transform 0.2s;
-    }
+#countdown {
+    font-size: 6em;
+    color: #fff;
+    text-shadow: 0 0 10px red, 0 0 20px green;
+    margin-top: 20px;
+    display: inline-block;
+    transition: transform 0.05s ease;
+}
 
-    #playButton:hover {
-        transform: scale(1.1);
-    }
+#playButton {
+    margin-top: 50px;
+    font-size: 2em;
+    padding: 15px 30px;
+    background-color: red;
+    color: white;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    text-shadow: 1px 1px 2px #000;
+    transition: transform 0.2s;
+}
 
-    .snowflake {
-        position: absolute;
-        top: -10px;
-        color: white;
-        font-size: 1em;
-        user-select: none;
-        pointer-events: none;
-        animation: fall linear infinite;
-    }
+#playButton:hover {
+    transform: scale(1.1);
+}
 
-    @keyframes fall {
-        to { transform: translateY(100vh); }
-    }
+.snowflake {
+    position: absolute;
+    top: -10px;
+    color: white;
+    font-size: 1em;
+    user-select: none;
+    pointer-events: none;
+    animation: fall linear infinite;
+}
+
+@keyframes fall {
+    to { transform: translateY(100vh); }
+}
 </style>
 </head>
 <body>
-<h1 id="title">Christmas</h1>
-<h1 id="subtitle">Countdown</h1>
-<div id="countdown">00d 00h 00m 00s</div>
-<button id="playButton">Play Music</button>
+<div id="container">
+    <h1 id="title">Christmas</h1>
+    <h1 id="subtitle">Countdown</h1>
+    <div id="countdown">00d 00h 00m 00s</div>
+    <button id="playButton">Play Music</button>
+</div>
 
 <script>
 document.title = "Christmas Countdown (Radio)";
 const countdownEl = document.getElementById('countdown');
 const titleEl = document.getElementById('title');
 const subtitleEl = document.getElementById('subtitle');
+const container = document.getElementById('container');
 const audio = new Audio();
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray;
@@ -106,14 +109,12 @@ const songs = [
     "Winter Wonderland","Wonderful Christmastime","You're A Mean One Mr.Grinch!"
 ];
 
-// Playlist with speech
+// Playlist with speech after each song
 const playlist = [];
 songs.forEach(song => {
     playlist.push({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`});
     playlist.push({name:"Speech", src:"songs/speech.mp3"});
 });
-const songDurations = songs.map(()=>180);
-const serverStartTime = new Date("Dec 1, 2025 00:00:00 UTC").getTime();
 
 // Countdown
 function updateCountdown(){
@@ -142,7 +143,7 @@ for(let i=0;i<50;i++){
     document.body.appendChild(snow);
 }
 
-// Audio visualizer
+// Setup analyser
 function setupAudio(){
     const track = audioCtx.createMediaElementSource(audio);
     analyser = audioCtx.createAnalyser();
@@ -151,22 +152,26 @@ function setupAudio(){
     dataArray = new Uint8Array(analyser.frequencyBinCount);
 }
 
+// Animate container and text
 function animateEffects(){
     requestAnimationFrame(animateEffects);
     if(!analyser) return;
     analyser.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
 
-    // Zoom & shake background
+    // Container zoom & shake
     const scale = 1 + avg/1000;
     const xShake = (Math.random()-0.5)*avg/50;
     const yShake = (Math.random()-0.5)*avg/50;
-    document.body.style.transform = `scale(${scale}) translate(${xShake}px,${yShake}px)`;
+    container.style.transform = `scale(${scale}) translate(${xShake}px,${yShake}px)`;
 
-    // Zoom & shake text
-    titleEl.style.transform = `scale(${1 + avg/800}) translate(${xShake}px,${yShake}px)`;
-    subtitleEl.style.transform = `scale(${1 + avg/800}) translate(${xShake}px,${yShake}px)`;
-    countdownEl.style.transform = `scale(${1 + avg/900}) translate(${xShake}px,${yShake}px)`;
+    // Background size pulsate
+    document.body.style.backgroundSize = `${100 + avg/5}% ${100 + avg/5}%`;
+
+    // Text minor pulsate
+    titleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
+    subtitleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
+    countdownEl.style.transform = `scale(${1 + avg/1400}) translate(${xShake/2}px,${yShake/2}px)`;
 
     // Snowflakes react
     document.querySelectorAll('.snowflake').forEach((flake,i)=>{
@@ -175,29 +180,28 @@ function animateEffects(){
     });
 }
 
-// Current song index
-function getCurrentSongIndexAndOffset(){
-    const now = Date.now();
-    const elapsed = (now-serverStartTime)/1000;
-    const total = songDurations.reduce((a,b)=>a+b,0);
-    let time = elapsed % total;
-    for(let i=0;i<playlist.length;i++){
-        if(playlist[i].name!=="Speech" && time < songDurations[Math.floor(i/2)])
-            return {index:i, offset:time};
-        if(playlist[i].name!=="Speech") time -= songDurations[Math.floor(i/2)];
-    }
-    return {index:0, offset:0};
-}
-
-// Play music synced (fixed for speech)
+// Playlist player with proper sequential handling
 let currentIndex = 0;
-function playSync(){
-    const { index, offset } = getCurrentSongIndexAndOffset();
-    const track = playlist[index];
-    audio.src = track.src;
-    if(track.name !== "Speech") audio.currentTime = offset;
-    audio.play().catch(()=>{});
+function playNextTrack(){
+    if(currentIndex >= playlist.length) currentIndex = 0; // loop
+    const track = playlist[currentIndex];
 
+    audio.onended = null; // remove previous listener
+    audio.src = track.src;
+    audio.currentTime = 0;
+
+    audio.play().then(() => {
+        audio.onended = () => {
+            currentIndex++;
+            playNextTrack();
+        };
+    }).catch((err) => {
+        console.error("Audio play failed:", err);
+        currentIndex++;
+        playNextTrack();
+    });
+
+    // Update Media Session metadata
     if('mediaSession' in navigator){
         navigator.mediaSession.metadata = new MediaMetadata({
             title: track.name,
@@ -206,12 +210,6 @@ function playSync(){
             artwork:[{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
         });
     }
-
-    // Next track handling
-    audio.onended = () => {
-        currentIndex = (index + 1) % playlist.length;
-        playSync();
-    };
 }
 
 // Start music
@@ -219,7 +217,7 @@ document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state==='suspended') await audioCtx.resume();
     setupAudio();
     animateEffects();
-    playSync();
+    playNextTrack();
     document.getElementById('playButton').style.display='none';
 });
 </script>
