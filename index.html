@@ -97,15 +97,16 @@ const songs = [
     "Winter Wonderland","Wonderful Christmastime","Your A Mean One Mr Grinch",
 ];
 
-// Build playlist with speech after each song
+// Build playlist with speech after songs
 const playlist = [];
 songs.forEach(song => {
     playlist.push({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`});
-    playlist.push({name:"Speech", src:"songs/speech.mp3"});
 });
+const speechTrack = {name:"Speech", src:"songs/speech.mp3"};
 
 const trackDurations = [];
 
+// Countdown
 function updateCountdown(){
     const now = new Date();
     let year = now.getFullYear();
@@ -121,6 +122,7 @@ function updateCountdown(){
 setInterval(updateCountdown,1000);
 updateCountdown();
 
+// Snowflakes
 for(let i=0;i<50;i++){
     const snow = document.createElement('div');
     snow.className='snowflake';
@@ -131,6 +133,7 @@ for(let i=0;i<50;i++){
     document.body.appendChild(snow);
 }
 
+// Animate container/text
 function animateEffects(){
     requestAnimationFrame(animateEffects);
     if(!analyser) return;
@@ -152,6 +155,7 @@ function animateEffects(){
 
 let currentIndex = 0;
 let audio, speechAudio;
+let speechPlaying = false;
 
 // Preload durations
 async function preloadDurations(){
@@ -163,7 +167,7 @@ async function preloadDurations(){
     }
 }
 
-// Calculate live track index and position
+// Calculate live track and position
 function calculateLiveIndexAndTime(){
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
@@ -188,30 +192,36 @@ function calculateLiveIndexAndTime(){
     return {index:0, time:0};
 }
 
-// Play track with crossfade
-function playTrackAt(index, startTime = 0){
+// Play track with speech overlay spanning two songs
+function playTrackAt(index, startTime=0){
     const track = playlist[index];
     audio.src = track.src;
     audio.currentTime = startTime;
     audio.onended = null;
 
     audio.play().then(()=>{
-        if(track.name !== "Speech"){
+        if(!speechPlaying){
             audio.addEventListener('timeupdate', function scheduleSpeech(){
                 const remaining = audio.duration - audio.currentTime;
-                if(remaining <= 5){ // crossfade last 5s
-                    // fade song down
-                    songGain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 5);
-                    // fade in speech
-                    speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
-                    speechGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1);
+                if(remaining <= 5){ // last 5s crossfade into speech
+                    speechPlaying = true;
+
+                    // Reduce music by 40%
+                    songGain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+
+                    // Play speech
+                    speechGain.gain.setValueAtTime(1, audioCtx.currentTime);
                     speechAudio.currentTime = 0;
                     speechAudio.play();
+
                     audio.removeEventListener('timeupdate', scheduleSpeech);
 
+                    // When speech ends, restore song volume
                     speechAudio.onended = () => {
-                        songGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1);
+                        songGain.gain.setValueAtTime(1, audioCtx.currentTime);
                         speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                        speechPlaying = false;
+
                         currentIndex++;
                         if(currentIndex >= playlist.length) currentIndex=0;
                         playTrackAt(currentIndex);
@@ -238,7 +248,7 @@ document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state==='suspended') await audioCtx.resume();
 
     audio = new Audio();
-    speechAudio = new Audio('songs/speech.mp3');
+    speechAudio = new Audio(speechTrack.src);
 
     const songSource = audioCtx.createMediaElementSource(audio);
     const speechSource = audioCtx.createMediaElementSource(speechAudio);
