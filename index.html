@@ -15,7 +15,6 @@ body {
     background: url('christmas-background.jpg') no-repeat center center fixed;
     background-size: cover;
 }
-
 #container {
     display: flex;
     flex-direction: column;
@@ -24,7 +23,6 @@ body {
     height: 100vh;
     transition: transform 0.05s ease;
 }
-
 #title, #subtitle {
     font-size: 6em;
     color: #fff;
@@ -33,7 +31,6 @@ body {
     display: inline-block;
     transition: transform 0.05s ease;
 }
-
 #countdown {
     font-size: 6em;
     color: #fff;
@@ -42,7 +39,6 @@ body {
     display: inline-block;
     transition: transform 0.05s ease;
 }
-
 #playButton {
     margin-top: 50px;
     font-size: 2em;
@@ -55,11 +51,7 @@ body {
     text-shadow: 1px 1px 2px #000;
     transition: transform 0.2s;
 }
-
-#playButton:hover {
-    transform: scale(1.1);
-}
-
+#playButton:hover { transform: scale(1.1); }
 .snowflake {
     position: absolute;
     top: -10px;
@@ -69,10 +61,7 @@ body {
     pointer-events: none;
     animation: fall linear infinite;
 }
-
-@keyframes fall {
-    to { transform: translateY(100vh); }
-}
+@keyframes fall { to { transform: translateY(100vh); } }
 </style>
 </head>
 <body>
@@ -80,7 +69,7 @@ body {
     <h1 id="title">Christmas</h1>
     <h1 id="subtitle">Countdown</h1>
     <div id="countdown">00d 00h 00m 00s</div>
-    <button id="playButton">Play Music</button>
+    <button id="playButton">Start Live Radio</button>
 </div>
 
 <script>
@@ -93,7 +82,6 @@ const container = document.getElementById('container');
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray, songGain, speechGain;
 
-// Songs
 const songs = [
     "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
     "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
@@ -118,7 +106,6 @@ songs.forEach(song => {
 
 const trackDurations = [];
 
-// Countdown
 function updateCountdown(){
     const now = new Date();
     let year = now.getFullYear();
@@ -134,7 +121,6 @@ function updateCountdown(){
 setInterval(updateCountdown,1000);
 updateCountdown();
 
-// Snowflakes
 for(let i=0;i<50;i++){
     const snow = document.createElement('div');
     snow.className='snowflake';
@@ -145,23 +131,19 @@ for(let i=0;i<50;i++){
     document.body.appendChild(snow);
 }
 
-// Animate container and text
 function animateEffects(){
     requestAnimationFrame(animateEffects);
     if(!analyser) return;
     analyser.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
-
     const scale = 1 + avg/1000;
     const xShake = (Math.random()-0.5)*avg/50;
     const yShake = (Math.random()-0.5)*avg/50;
     container.style.transform = `scale(${scale}) translate(${xShake}px,${yShake}px)`;
     document.body.style.backgroundSize = `${100 + avg/5}% ${100 + avg/5}%`;
-
     titleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
     subtitleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
     countdownEl.style.transform = `scale(${1 + avg/1400}) translate(${xShake/2}px,${yShake/2}px)`;
-
     document.querySelectorAll('.snowflake').forEach((flake,i)=>{
         flake.style.transform = `translateY(${Math.sin(Date.now()/1000+i)*5 + avg/15}px)`;
         flake.style.opacity = 0.5 + avg/512;
@@ -176,10 +158,7 @@ async function preloadDurations(){
     for(const track of playlist){
         const tempAudio = new Audio(track.src);
         await new Promise(resolve=>{
-            tempAudio.addEventListener('loadedmetadata', ()=>{
-                trackDurations.push(tempAudio.duration);
-                resolve();
-            });
+            tempAudio.addEventListener('loadedmetadata', ()=>{ trackDurations.push(tempAudio.duration); resolve(); });
         });
     }
 }
@@ -209,80 +188,58 @@ function calculateLiveIndexAndTime(){
     return {index:0, time:0};
 }
 
-// Play next track with speech overlay
-function playNextTrack(){
-    if(currentIndex >= playlist.length) currentIndex = 0;
-    const track = playlist[currentIndex];
-
-    audio.onended = null;
+// Play track with crossfade
+function playTrackAt(index, startTime = 0){
+    const track = playlist[index];
     audio.src = track.src;
-    audio.currentTime = 0;
+    audio.currentTime = startTime;
+    audio.onended = null;
 
     audio.play().then(()=>{
         if(track.name !== "Speech"){
-            audio.addEventListener('timeupdate', function playSpeech(){
+            audio.addEventListener('timeupdate', function scheduleSpeech(){
                 const remaining = audio.duration - audio.currentTime;
-                if(remaining <= 5){
-                    songGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-                    speechGain.gain.setValueAtTime(1, audioCtx.currentTime);
+                if(remaining <= 5){ // crossfade last 5s
+                    // fade song down
+                    songGain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 5);
+                    // fade in speech
+                    speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    speechGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1);
                     speechAudio.currentTime = 0;
                     speechAudio.play();
-                    audio.removeEventListener('timeupdate', playSpeech);
+                    audio.removeEventListener('timeupdate', scheduleSpeech);
 
-                    speechAudio.onended = ()=>{
-                        songGain.gain.setValueAtTime(1, audioCtx.currentTime);
+                    speechAudio.onended = () => {
+                        songGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1);
                         speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
                         currentIndex++;
-                        playNextTrack();
+                        if(currentIndex >= playlist.length) currentIndex=0;
+                        playTrackAt(currentIndex);
                     };
                 }
             });
         } else {
-            audio.onended = ()=>{
+            audio.onended = () => {
                 currentIndex++;
-                playNextTrack();
+                if(currentIndex >= playlist.length) currentIndex=0;
+                playTrackAt(currentIndex);
             };
         }
     }).catch(err=>{
-        console.error("Audio play failed:", err);
+        console.warn("Audio play failed:", err);
         currentIndex++;
-        playNextTrack();
+        if(currentIndex >= playlist.length) currentIndex=0;
+        playTrackAt(currentIndex);
     });
-
-    if('mediaSession' in navigator){
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: track.name,
-            artist:'Christmas Countdown',
-            album:'Live Radio',
-            artwork:[{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
-        });
-
-        navigator.mediaSession.setActionHandler('seekbackward', null);
-        navigator.mediaSession.setActionHandler('seekforward', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
-    }
 }
 
-// Jump to live track
-async function jumpToLive(){
-    await preloadDurations();
-    const {index, time} = calculateLiveIndexAndTime();
-    currentIndex = index;
-    audio.src = playlist[currentIndex].src;
-    audio.currentTime = time;
-    audio.play();
-}
-
-// Start music button
+// Start live radio
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state==='suspended') await audioCtx.resume();
 
-    // Create audio elements
     audio = new Audio();
     speechAudio = new Audio('songs/speech.mp3');
 
-    // Setup sources and analyser
     const songSource = audioCtx.createMediaElementSource(audio);
     const speechSource = audioCtx.createMediaElementSource(speechAudio);
 
@@ -299,7 +256,10 @@ document.getElementById('playButton').addEventListener('click', async ()=>{
     dataArray = new Uint8Array(analyser.frequencyBinCount);
 
     animateEffects();
-    jumpToLive();
+    await preloadDurations();
+    const {index, time} = calculateLiveIndexAndTime();
+    currentIndex = index;
+    playTrackAt(currentIndex, time);
 
     document.getElementById('playButton').style.display='none';
 });
