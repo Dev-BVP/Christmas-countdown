@@ -90,7 +90,7 @@ const audio = new Audio();
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray;
 
-// Main songs
+// Songs
 const songs = [
     "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
     "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
@@ -157,13 +157,13 @@ function animateEffects(){
     analyser.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
 
-    // Zoom and shake body (background)
+    // Zoom & shake background
     const scale = 1 + avg/1000;
     const xShake = (Math.random()-0.5)*avg/50;
     const yShake = (Math.random()-0.5)*avg/50;
     document.body.style.transform = `scale(${scale}) translate(${xShake}px,${yShake}px)`;
 
-    // Zoom and shake title/subtitle/countdown
+    // Zoom & shake text
     titleEl.style.transform = `scale(${1 + avg/800}) translate(${xShake}px,${yShake}px)`;
     subtitleEl.style.transform = `scale(${1 + avg/800}) translate(${xShake}px,${yShake}px)`;
     countdownEl.style.transform = `scale(${1 + avg/900}) translate(${xShake}px,${yShake}px)`;
@@ -189,13 +189,15 @@ function getCurrentSongIndexAndOffset(){
     return {index:0, offset:0};
 }
 
-// Play music synced
+// Play music synced (fixed for speech)
+let currentIndex = 0;
 function playSync(){
-    const {index, offset} = getCurrentSongIndexAndOffset();
+    const { index, offset } = getCurrentSongIndexAndOffset();
     const track = playlist[index];
     audio.src = track.src;
-    audio.currentTime = offset;
+    if(track.name !== "Speech") audio.currentTime = offset;
     audio.play().catch(()=>{});
+
     if('mediaSession' in navigator){
         navigator.mediaSession.metadata = new MediaMetadata({
             title: track.name,
@@ -204,8 +206,12 @@ function playSync(){
             artwork:[{src:'favicon.ico', sizes:'64x64', type:'image/png'}]
         });
     }
-    let duration = track.name==="Speech"? audio.duration || 5 : songDurations[Math.floor(index/2)];
-    setTimeout(playSync,duration*1000);
+
+    // Next track handling
+    audio.onended = () => {
+        currentIndex = (index + 1) % playlist.length;
+        playSync();
+    };
 }
 
 // Start music
