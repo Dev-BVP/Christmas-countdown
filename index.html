@@ -163,7 +163,7 @@ async function loadAudioBuffer(url){
     return audioCtx.decodeAudioData(arrayBuffer);
 }
 
-// --- Play current + next song only ---
+// Play current + next song only
 let currentIndex = 0;
 let songSource = null;
 let nextSongBuffer = null;
@@ -208,7 +208,7 @@ async function playLiveSong(index, offset=0){
         };
     }, speechTime * 1000);
 
-    // Preload next song only
+    // Preload next song
     const nextIndex = (index + 1) % playlist.length;
     nextSongBuffer = await loadAudioBuffer(playlist[nextIndex].src);
 
@@ -219,32 +219,34 @@ async function playLiveSong(index, offset=0){
         songGain.disconnect();
         songGain = null;
         currentIndex = nextIndex;
-        playLiveSong(currentIndex, 0); // start next song
+        playLiveSong(currentIndex, 0);
     }, (duration - offset) * 1000);
 }
 
-// --- Block media keys & controls ---
+// Block media keys only, let Ctrl/Shift combos work
 function blockControls(){
     if('mediaSession' in navigator){
         ['play','pause','previoustrack','nexttrack','stop','seekbackward','seekforward','seekto'].forEach(a=>{
             navigator.mediaSession.setActionHandler(a,null);
         });
     }
-    window.addEventListener('contextmenu', e=> e.preventDefault());
+    window.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('keydown', e=>{
-        if(e.ctrlKey || e.metaKey || e.key === "F5") e.preventDefault();
-        if(["MediaPlayPause","MediaTrackNext","MediaTrackPrevious","MediaStop"].includes(e.code)) e.preventDefault();
+        const mediaKeys = ["MediaPlayPause","MediaTrackNext","MediaTrackPrevious","MediaStop"];
+        if(mediaKeys.includes(e.code)){
+            e.preventDefault();
+            e.stopPropagation();
+        }
     });
 }
 
-// --- Start live radio ---
+// Start live radio
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state === 'suspended') await audioCtx.resume();
 
-    // Determine live song
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
-    const approxDuration = 240; // 4 minutes
+    const approxDuration = 240; // 4 min per song
     let elapsed = Math.max(0,(now - start)/1000);
 
     let sum = 0;
