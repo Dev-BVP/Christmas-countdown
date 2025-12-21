@@ -79,12 +79,11 @@ const titleEl = document.getElementById('title');
 const subtitleEl = document.getElementById('subtitle');
 const container = document.getElementById('container');
 
-// --- Audio Setup ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray;
 let songGain, speechGain;
 
-// Track list
+// Playlist
 const songs = [
     "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
     "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
@@ -99,11 +98,9 @@ const songs = [
     "Up On The Housetop","We Wish You A Merry Christmas","White Christmas",
     "Winter Wonderland","Wonderful Christmastime","Your A Mean One Mr Grinch",
 ];
-
 const playlist = songs.map(song => ({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`}));
 const speechTrack = {name:"Speech", src:"songs/speech.mp3"};
 
-let songBuffers = [];
 let speechBuffer = null;
 
 // Countdown
@@ -137,7 +134,6 @@ for(let i=0;i<50;i++){
 function animateEffects(){
     requestAnimationFrame(animateEffects);
     if(!analyser) return;
-
     analyser.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
 
@@ -160,31 +156,25 @@ function animateEffects(){
     });
 }
 
-// --- Load audio buffers in parallel ---
-async function preloadAllParallel(){
-    // Load songs in parallel
-    const songPromises = playlist.map(track =>
-        fetch(track.src)
-            .then(r => r.arrayBuffer())
-            .then(buffer => audioCtx.decodeAudioData(buffer))
-    );
-    songBuffers = await Promise.all(songPromises);
-
-    // Load speech
-    const speechArray = await fetch(speechTrack.src).then(r => r.arrayBuffer());
-    speechBuffer = await audioCtx.decodeAudioData(speechArray);
+// Load a single audio buffer
+async function loadAudioBuffer(url){
+    const res = await fetch(url);
+    const arrayBuffer = await res.arrayBuffer();
+    return audioCtx.decodeAudioData(arrayBuffer);
 }
 
-// --- Play tracks like live radio ---
+// --- Play current + next song only ---
 let currentIndex = 0;
 let songSource = null;
+let nextSongBuffer = null;
 let speechSource = null;
-let songStartTime = 0;
 
-function scheduleNextSong(startOffset=0){
+async function playLiveSong(index, offset=0){
+    // Load current song
+    const buffer = await loadAudioBuffer(playlist[index].src);
+
     songSource = audioCtx.createBufferSource();
-    songSource.buffer = songBuffers[currentIndex];
-
+    songSource.buffer = buffer;
     songGain = audioCtx.createGain();
     songGain.gain.value = 1;
 
@@ -192,36 +182,45 @@ function scheduleNextSong(startOffset=0){
     dataArray = new Uint8Array(analyser.frequencyBinCount);
 
     songSource.connect(songGain).connect(analyser).connect(audioCtx.destination);
+    songSource.start(0, offset);
 
-    songStartTime = audioCtx.currentTime - startOffset;
-    songSource.start(0, startOffset);
-
-    // Schedule speech near end
-    const duration = songSource.buffer.duration;
-    const speechTime = duration - 5;
-    if(speechBuffer){
-        speechSource = audioCtx.createBufferSource();
-        speechSource.buffer = speechBuffer;
-        speechGain = audioCtx.createGain();
-        speechGain.gain.value = 0;
-        speechSource.connect(speechGain).connect(audioCtx.destination);
-
-        setTimeout(()=>{
-            songGain.gain.setValueAtTime(0.6, audioCtx.currentTime);
-            speechGain.gain.setValueAtTime(1, audioCtx.currentTime);
-            speechSource.start();
-            speechSource.onended = ()=>{
-                songGain.gain.setValueAtTime(1, audioCtx.currentTime);
-                speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
-            };
-        }, speechTime * 1000);
+    // Load speech if not yet loaded
+    if(!speechBuffer){
+        speechBuffer = await loadAudioBuffer(speechTrack.src);
     }
 
-    // Schedule next song
+    // Schedule speech near end
+    const duration = buffer.duration;
+    const speechTime = duration - 5;
+    speechSource = audioCtx.createBufferSource();
+    speechSource.buffer = speechBuffer;
+    speechGain = audioCtx.createGain();
+    speechGain.gain.value = 0;
+    speechSource.connect(speechGain).connect(audioCtx.destination);
+
     setTimeout(()=>{
-        currentIndex = (currentIndex + 1) % songBuffers.length;
-        scheduleNextSong(0);
-    }, (duration - startOffset) * 1000);
+        songGain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+        speechGain.gain.setValueAtTime(1, audioCtx.currentTime);
+        speechSource.start();
+        speechSource.onended = ()=>{
+            songGain.gain.setValueAtTime(1, audioCtx.currentTime);
+            speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        };
+    }, speechTime * 1000);
+
+    // Preload next song only
+    const nextIndex = (index + 1) % playlist.length;
+    nextSongBuffer = await loadAudioBuffer(playlist[nextIndex].src);
+
+    // After current song ends, delete current buffer and play next
+    setTimeout(()=>{
+        songSource.disconnect();
+        songSource = null;
+        songGain.disconnect();
+        songGain = null;
+        currentIndex = nextIndex;
+        playLiveSong(currentIndex, 0); // start next song
+    }, (duration - offset) * 1000);
 }
 
 // --- Block media keys & controls ---
@@ -241,27 +240,26 @@ function blockControls(){
 // --- Start live radio ---
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state === 'suspended') await audioCtx.resume();
-    await preloadAllParallel();
 
-    // Determine “live” position
+    // Determine live song
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
+    const approxDuration = 240; // 4 minutes
     let elapsed = Math.max(0,(now - start)/1000);
 
-    // Sum durations to find current track
     let sum = 0;
     let liveIndex = 0;
-    for(let i=0;i<songBuffers.length;i++){
-        if(sum + songBuffers[i].duration > elapsed){
+    for(let i=0;i<playlist.length;i++){
+        if(sum + approxDuration > elapsed){
             liveIndex = i;
             break;
         }
-        sum += songBuffers[i].duration;
+        sum += approxDuration;
     }
     const offset = elapsed - sum;
     currentIndex = liveIndex;
 
-    scheduleNextSong(offset);
+    playLiveSong(currentIndex, offset);
     animateEffects();
     blockControls();
     document.getElementById('playButton').style.display='none';
