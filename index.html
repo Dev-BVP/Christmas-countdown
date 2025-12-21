@@ -102,6 +102,7 @@ const playlist = songs.map(song => ({name: song, src: `songs/Music Now, Trap Mus
 const speechTrack = {name:"Speech", src:"songs/speech.mp3"};
 
 let speechBuffer = null;
+let trackDurations = []; // store durations of loaded songs
 
 // Countdown
 function updateCountdown(){
@@ -156,14 +157,14 @@ function animateEffects(){
     });
 }
 
-// Load a single audio buffer
+// Load audio buffer
 async function loadAudioBuffer(url){
     const res = await fetch(url);
     const arrayBuffer = await res.arrayBuffer();
     return audioCtx.decodeAudioData(arrayBuffer);
 }
 
-// Play current + next song only
+// Play current + next song only with live durations
 let currentIndex = 0;
 let songSource = null;
 let nextSongBuffer = null;
@@ -172,6 +173,7 @@ let speechSource = null;
 async function playLiveSong(index, offset=0){
     // Load current song
     const buffer = await loadAudioBuffer(playlist[index].src);
+    trackDurations[index] = buffer.duration;
 
     songSource = audioCtx.createBufferSource();
     songSource.buffer = buffer;
@@ -190,8 +192,8 @@ async function playLiveSong(index, offset=0){
     }
 
     // Schedule speech near end
-    const duration = buffer.duration;
-    const speechTime = duration - 5;
+    const duration = buffer.duration - offset;
+    const speechTime = Math.max(0, duration - 5);
     speechSource = audioCtx.createBufferSource();
     speechSource.buffer = speechBuffer;
     speechGain = audioCtx.createGain();
@@ -211,6 +213,7 @@ async function playLiveSong(index, offset=0){
     // Preload next song
     const nextIndex = (index + 1) % playlist.length;
     nextSongBuffer = await loadAudioBuffer(playlist[nextIndex].src);
+    trackDurations[nextIndex] = nextSongBuffer.duration;
 
     // After current song ends, delete current buffer and play next
     setTimeout(()=>{
@@ -220,10 +223,10 @@ async function playLiveSong(index, offset=0){
         songGain = null;
         currentIndex = nextIndex;
         playLiveSong(currentIndex, 0);
-    }, (duration - offset) * 1000);
+    }, duration*1000);
 }
 
-// Block media keys only, let Ctrl/Shift combos work
+// Block media keys only
 function blockControls(){
     if('mediaSession' in navigator){
         ['play','pause','previoustrack','nexttrack','stop','seekbackward','seekforward','seekto'].forEach(a=>{
@@ -244,20 +247,24 @@ function blockControls(){
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state === 'suspended') await audioCtx.resume();
 
+    // Determine live song based on actual loaded durations
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
-    const approxDuration = 240; // 4 min per song
-    let elapsed = Math.max(0,(now - start)/1000);
 
+    let elapsed = Math.max(0,(now - start)/1000);
     let sum = 0;
     let liveIndex = 0;
+
+    // Try to estimate based on loaded durations; use current + next only
     for(let i=0;i<playlist.length;i++){
-        if(sum + approxDuration > elapsed){
+        const dur = trackDurations[i] || 240; // fallback if not loaded yet
+        if(sum + dur > elapsed){
             liveIndex = i;
             break;
         }
-        sum += approxDuration;
+        sum += dur;
     }
+
     const offset = elapsed - sum;
     currentIndex = liveIndex;
 
