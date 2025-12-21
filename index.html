@@ -14,6 +14,7 @@ body {
     height: 100vh;
     background: url('christmas-background.jpg') no-repeat center center fixed;
     background-size: cover;
+    user-select: none; /* prevent text selection */
 }
 #container {
     display: flex;
@@ -97,11 +98,7 @@ const songs = [
     "Winter Wonderland","Wonderful Christmastime","Your A Mean One Mr Grinch",
 ];
 
-// Playlist without repeated speech
-const playlist = [];
-songs.forEach(song => {
-    playlist.push({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`});
-});
+const playlist = songs.map(song => ({name: song, src: `songs/Music Now, Trap Music Now, Dance Music Now - ${song} (SPOTISAVER).mp3`}));
 const speechTrack = {name:"Speech", src:"songs/speech.mp3"};
 
 const trackDurations = [];
@@ -141,23 +138,19 @@ function animateEffects(){
     analyser.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length;
 
-    // Zoom + shake
     const scale = 1 + avg/1000;
     const xShake = (Math.random()-0.5)*avg/50;
     const yShake = (Math.random()-0.5)*avg/50;
     container.style.transform = `scale(${scale}) translate(${xShake}px,${yShake}px)`;
 
-    // Background brightness
-    const brightness = 1 + avg/500; // adjust for intensity
+    const brightness = 1 + avg/500;
     document.body.style.filter = `brightness(${brightness})`;
     document.body.style.backgroundSize = `${100 + avg/5}% ${100 + avg/5}%`;
 
-    // Text scaling/shake
     titleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
     subtitleEl.style.transform = `scale(${1 + avg/1200}) translate(${xShake/2}px,${yShake/2}px)`;
     countdownEl.style.transform = `scale(${1 + avg/1400}) translate(${xShake/2}px,${yShake/2}px)`;
 
-    // Snowflakes
     document.querySelectorAll('.snowflake').forEach((flake,i)=>{
         flake.style.transform = `translateY(${Math.sin(Date.now()/1000+i)*5 + avg/15}px)`;
         flake.style.opacity = 0.5 + avg/512;
@@ -169,17 +162,13 @@ let audio, speechAudio;
 let speechScheduled = false;
 let speechPlaying = false;
 
-// Preload durations
 async function preloadDurations(){
     for(const track of playlist){
         const tempAudio = new Audio(track.src);
-        await new Promise(resolve=>{
-            tempAudio.addEventListener('loadedmetadata', ()=>{ trackDurations.push(tempAudio.duration); resolve(); });
-        });
+        await new Promise(resolve=>{ tempAudio.addEventListener('loadedmetadata', ()=>{ trackDurations.push(tempAudio.duration); resolve(); }); });
     }
 }
 
-// Calculate live track
 function calculateLiveIndexAndTime(){
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
@@ -187,24 +176,19 @@ function calculateLiveIndexAndTime(){
     const elapsed = (now - start)/1000;
     let sum = 0;
     for(let i=0; i<trackDurations.length; i++){
-        if(sum + trackDurations[i] > elapsed){
-            return {index:i, time: elapsed - sum};
-        }
+        if(sum + trackDurations[i] > elapsed) return {index:i, time: elapsed - sum};
         sum += trackDurations[i];
     }
     const total = trackDurations.reduce((a,b)=>a+b,0);
     const remaining = elapsed % total;
     sum = 0;
     for(let i=0; i<trackDurations.length; i++){
-        if(sum + trackDurations[i] > remaining){
-            return {index:i, time: remaining - sum};
-        }
+        if(sum + trackDurations[i] > remaining) return {index:i, time: remaining - sum};
         sum += trackDurations[i];
     }
     return {index:0, time:0};
 }
 
-// Play track with speech spanning two songs
 function playTrackAt(index, startTime=0){
     const track = playlist[index];
     audio.src = track.src;
@@ -215,14 +199,11 @@ function playTrackAt(index, startTime=0){
         if(!speechScheduled && !speechPlaying){
             audio.addEventListener('timeupdate', function scheduleSpeech(){
                 const remaining = audio.duration - audio.currentTime;
-                if(remaining <= 5){ // start speech
+                if(remaining <= 5){
                     speechScheduled = true;
                     speechPlaying = true;
 
-                    // Reduce music by 40%
                     songGain.gain.setValueAtTime(0.6, audioCtx.currentTime);
-
-                    // Play speech
                     speechGain.gain.setValueAtTime(1, audioCtx.currentTime);
                     speechAudio.currentTime = 0;
                     speechAudio.play();
@@ -230,11 +211,9 @@ function playTrackAt(index, startTime=0){
                     audio.removeEventListener('timeupdate', scheduleSpeech);
 
                     speechAudio.onended = () => {
-                        // Restore music
                         songGain.gain.setValueAtTime(1, audioCtx.currentTime);
                         speechGain.gain.setValueAtTime(0, audioCtx.currentTime);
 
-                        // Reset flags
                         speechScheduled = false;
                         speechPlaying = false;
 
@@ -256,6 +235,22 @@ function playTrackAt(index, startTime=0){
         currentIndex++;
         if(currentIndex >= playlist.length) currentIndex=0;
         playTrackAt(currentIndex);
+    });
+}
+
+// **Completely block pause/skip**
+function blockControls(){
+    if('mediaSession' in navigator){
+        ['play','pause','previoustrack','nexttrack','stop','seekbackward','seekforward','seekto'].forEach(action=>{
+            navigator.mediaSession.setActionHandler(action,null);
+        });
+    }
+    // Prevent right-click context
+    window.addEventListener('contextmenu', e => e.preventDefault());
+    // Prevent Ctrl+W / Ctrl+R / F5 / etc.
+    window.addEventListener('keydown', e => {
+        if(e.ctrlKey || e.metaKey || e.key === "F5") e.preventDefault();
+        if(["MediaPlayPause","MediaTrackNext","MediaTrackPrevious","MediaStop"].includes(e.code)) e.preventDefault();
     });
 }
 
@@ -287,6 +282,7 @@ document.getElementById('playButton').addEventListener('click', async ()=>{
     currentIndex = index;
     playTrackAt(currentIndex, time);
 
+    blockControls();
     document.getElementById('playButton').style.display='none';
 });
 </script>
