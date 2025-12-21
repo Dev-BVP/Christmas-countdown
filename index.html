@@ -83,7 +83,6 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let analyser, dataArray;
 let songGain, speechGain;
 
-// Playlist
 const songs = [
     "All I Want For Christmas Is You","Baby It's Cold Outside","Blue Christmas",
     "Carol Of The Bells","Christmas (Baby Please Come Home)","Christmas Canon",
@@ -102,7 +101,7 @@ const playlist = songs.map(song => ({name: song, src: `songs/Music Now, Trap Mus
 const speechTrack = {name:"Speech", src:"songs/speech.mp3"};
 
 let speechBuffer = null;
-let trackDurations = []; // store durations of loaded songs
+let trackDurations = []; 
 
 // Countdown
 function updateCountdown(){
@@ -171,7 +170,6 @@ let nextSongBuffer = null;
 let speechSource = null;
 
 async function playLiveSong(index, offset=0){
-    // Load current song
     const buffer = await loadAudioBuffer(playlist[index].src);
     trackDurations[index] = buffer.duration;
 
@@ -186,12 +184,10 @@ async function playLiveSong(index, offset=0){
     songSource.connect(songGain).connect(analyser).connect(audioCtx.destination);
     songSource.start(0, offset);
 
-    // Load speech if not yet loaded
     if(!speechBuffer){
         speechBuffer = await loadAudioBuffer(speechTrack.src);
     }
 
-    // Schedule speech near end
     const duration = buffer.duration - offset;
     const speechTime = Math.max(0, duration - 5);
     speechSource = audioCtx.createBufferSource();
@@ -210,12 +206,10 @@ async function playLiveSong(index, offset=0){
         };
     }, speechTime * 1000);
 
-    // Preload next song
     const nextIndex = (index + 1) % playlist.length;
     nextSongBuffer = await loadAudioBuffer(playlist[nextIndex].src);
     trackDurations[nextIndex] = nextSongBuffer.duration;
 
-    // After current song ends, delete current buffer and play next
     setTimeout(()=>{
         songSource.disconnect();
         songSource = null;
@@ -247,27 +241,25 @@ function blockControls(){
 document.getElementById('playButton').addEventListener('click', async ()=>{
     if(audioCtx.state === 'suspended') await audioCtx.resume();
 
-    // Determine live song based on actual loaded durations
     const now = new Date().getTime();
     const start = new Date("Dec 1, 2025 00:00:00").getTime();
-
     let elapsed = Math.max(0,(now - start)/1000);
-    let sum = 0;
-    let liveIndex = 0;
 
-    // Try to estimate based on loaded durations; use current + next only
+    let liveIndex = 0;
+    let offset = 0;
+    let sum = 0;
+
     for(let i=0;i<playlist.length;i++){
-        const dur = trackDurations[i] || 240; // fallback if not loaded yet
+        const dur = trackDurations[i] || 240;
         if(sum + dur > elapsed){
             liveIndex = i;
+            offset = elapsed - sum;
             break;
         }
         sum += dur;
     }
 
-    const offset = elapsed - sum;
     currentIndex = liveIndex;
-
     playLiveSong(currentIndex, offset);
     animateEffects();
     blockControls();
